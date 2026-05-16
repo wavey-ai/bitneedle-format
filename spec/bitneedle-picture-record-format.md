@@ -48,16 +48,15 @@ A decoder MAY ignore optional creator metadata fields it does not understand. A 
 
 ## 4. Image Container
 
-The current exact-digital image profile is:
+The current exact-digital raster profile is:
 
-- container: `PNG`
-- color model: `RGBA`
+- color model: exact `RGB` samples
 - channel depth: `8 bits per channel`
 - raster size: `576 x 576`
 
-Lossy image formats are non-conforming for exact-digital interchange.
+`PNG` with RGB or RGBA samples is the canonical interchange container. Other lossless raster containers MAY be used if decoding the container produces the same exact 8-bit RGB samples at every encoded spiral pixel. Lossy image formats are non-conforming for exact-digital interchange.
 
-Written payload pixels MUST use `alpha = 255`. Written metadata pixels MUST use non-zero alpha. Pixels on the main payload spiral with `alpha = 0` are interpreted as unwritten. Decoders MUST NOT treat black RGB pixels as empty, because black is valid payload data.
+The carrier MAY include an alpha channel for presentation or compositing. Alpha is outside the Bitneedle data model and is not used by this specification. Decoders MUST NOT treat black RGB pixels as empty, because black is valid payload data.
 
 ## 5. Coordinate System
 
@@ -251,8 +250,6 @@ For `rgb`, if the byte stream length is not divisible by `3`, the final pixel is
 
 For `grayscale`, each written payload pixel MUST have `R = G = B = byte`.
 
-For both payload encodings, each written payload pixel MUST have `alpha = 255`.
-
 ### 11.3 Payload Length
 
 Encoders MUST write the exact ECDC byte length in metadata segment `2`.
@@ -275,7 +272,7 @@ Given a record image and either a known record profile or a successful profile i
 10. truncate the result to the declared ECDC byte length
 11. validate the recovered ECDC payload before playback or further processing
 
-The first unwritten payload-groove pixel, defined as the first payload-groove pixel with `alpha = 0`, terminates groove recovery when the declared byte length is absent or when scanning beyond declared payload length for diagnostics. Decoders MUST NOT use black RGB pixels as end-of-stream markers.
+Decoders MUST NOT use black RGB pixels or presentation attributes as end-of-stream markers.
 
 ## 13. Exact-Digital Recovery Requirements
 
@@ -284,9 +281,9 @@ Conforming exact-digital interchange requires:
 - lossless image storage
 - no color-space transform that changes effective channel values
 - no scaling, resampling, filtering, or recompression
-- no compositing over written payload or metadata pixels
+- no compositing or blending that changes written payload or metadata RGB samples
 
-Arbitrary artwork MAY exist outside written spiral paths. Transparency and pictorial content outside payload and metadata spirals are allowed, but written spiral pixels MUST preserve encoded RGBA values exactly.
+Arbitrary artwork MAY exist outside written spiral paths. Pictorial content outside payload and metadata spirals is allowed, but written spiral pixels MUST preserve encoded RGB values exactly.
 
 ## 14. Extension Points
 
