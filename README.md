@@ -10,9 +10,9 @@ This repository is intended to hold the public format specification, segment reg
 
 ## Status
 
-Draft. The wire format is implemented by the Bitneedle reference player and creator tooling, but the public conformance vector set is still being prepared.
+Draft public specification.
 
-Existing internal golden files are useful implementation regression fixtures, but should not yet be treated as normative examples until regenerated against the current public header profile.
+The Bitneedle reference player and creator tooling implement this format. Conformance examples and test vectors will be published in this repository as they are finalized.
 
 ## License
 
