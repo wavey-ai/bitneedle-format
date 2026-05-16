@@ -5,7 +5,7 @@ This directory contains the public Bitneedle picture-record examples generated f
 Published assets:
 
 - `single45.record.png`: standard 45-style picture record
-- `single45.picture-noise.record.png`: 45-style picture record with deterministic RGB picture noise under the encoded spiral
+- `single45.picture-noise.record.png`: 45-style picture record with random-looking RGB picture noise under the encoded spiral
 - `single45.ecdc`: expected ECDC payload for the 45 examples
 - `lp.record.png`: LP-style picture record
 - `lp.ecdc`: expected ECDC payload for the LP example
