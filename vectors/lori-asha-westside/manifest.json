@@ -1,0 +1,109 @@
+{
+  "format": "bitneedle-reference-vector-v1",
+  "id": "lori-asha-westside",
+  "title": "Lori Asha - Westside",
+  "status": "reference-example",
+  "description": "Reference Bitneedle picture-record examples generated from the Lori Asha Westside premix source.",
+  "source": {
+    "artist": "Lori Asha",
+    "title": "Westside",
+    "sourceRelease": "Lori Asha album premix"
+  },
+  "payload": {
+    "kind": "ecdc",
+    "note": "The single45 and lp ECDC payload files are byte-identical copies for profile-specific test convenience.",
+    "single45": {
+      "path": "single45.ecdc",
+      "sha256": "e5a665a9f25032131e146099391d05c629b6e48f73ba699fea961240044c5d1e",
+      "bytes": 255061
+    },
+    "lp": {
+      "path": "lp.ecdc",
+      "sha256": "e5a665a9f25032131e146099391d05c629b6e48f73ba699fea961240044c5d1e",
+      "bytes": 255061
+    }
+  },
+  "records": {
+    "single45": {
+      "profile": "single45",
+      "rpm": 45,
+      "payloadEncoding": "rgb",
+      "bValue": 0.2794110213881975,
+      "exact": true,
+      "png": {
+        "path": "single45.record.png",
+        "sha256": "78fb74e58b04b55404491a7cde718ac533186e6099c2b82cf8cfbdd9347c0439",
+        "bytes": 499749
+      },
+      "pictureNoisePng": {
+        "path": "single45.picture-noise.record.png",
+        "sha256": "2ef175b4e7b25965b9a782c1c315ca947ff5b007f8398c1659d23e6c90ea7c75",
+        "bytes": 1146165
+      },
+      "progressive": {
+        "first": {
+          "path": "single45.stream-first.record.png",
+          "sha256": "db82f1a022a478e87f196fa7bf4682b85431cd5f7ea4b68f5dd2d931b1984be3",
+          "bytes": 36753
+        },
+        "firstPreviewRevolutions": 0.1992681803815609,
+        "last": {
+          "path": "single45.stream-last.record.png",
+          "sha256": "2dc605a7e368712c9dbf062fc2682ee2b32e2e72a277812e161f5e8050dc96be",
+          "bytes": 485712
+        },
+        "lastPreviewRevolutions": 63.047560027142076,
+        "final": {
+          "path": "single45.stream-final.record.png",
+          "sha256": "6279282a18f6d6a78f3090755087b8a3052124f8dad5c028e8a721df36a4e901",
+          "bytes": 486857
+        }
+      },
+      "geometry": {
+        "recordProfile": "single45",
+        "spindleHoleRadius": 63,
+        "labelRadius": 151,
+        "payloadInnerRadius": 169,
+        "payloadOuterRadius": 280,
+        "outerRadius": 287,
+        "outerRimThickness": 4,
+        "leadInBandThickness": 6
+      }
+    },
+    "lp": {
+      "profile": "lp",
+      "rpm": 33.3333333333,
+      "payloadEncoding": "rgb",
+      "bValue": 0.3730910498805641,
+      "exact": true,
+      "png": {
+        "path": "lp.record.png",
+        "sha256": "86bbbf9f0b01be1174edf73a3581566527205d212d875f092ef8a57e08096214",
+        "bytes": 526594
+      },
+      "geometry": {
+        "recordProfile": "lp",
+        "spindleHoleRadius": 7,
+        "labelRadius": 95,
+        "payloadInnerRadius": 109,
+        "payloadOuterRadius": 280,
+        "outerRadius": 287,
+        "outerRimThickness": 4,
+        "leadInBandThickness": 6
+      }
+    }
+  },
+  "checks": {
+    "expected": [
+      "Decode single45.record.png to ECDC and compare with single45.ecdc.",
+      "Decode single45.picture-noise.record.png to ECDC and compare with single45.ecdc.",
+      "Decode lp.record.png to ECDC and compare with lp.ecdc.",
+      "single45.ecdc and lp.ecdc should have identical SHA-256 hashes."
+    ],
+    "single45AndLpPayloadsMatch": true
+  },
+  "notes": [
+    "Decoded WAV files are intentionally not published in this vector set.",
+    "The Bitneedle format is defined over exact RGB samples; alpha, if present in these PNGs, is presentation-only."
+  ]
+}
