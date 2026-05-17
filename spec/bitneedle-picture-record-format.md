@@ -14,6 +14,12 @@ This is a draft public specification for implementers and creators. It is not an
 
 The key words `MUST`, `MUST NOT`, `REQUIRED`, `SHOULD`, `SHOULD NOT`, and `MAY` are to be interpreted as described in RFC 2119 and RFC 8174 when, and only when, they appear in all capitals.
 
+## Intellectual Property Notice
+
+Certain aspects of Bitneedle records, encoding, decoding, rendering, and playback are patent pending.
+
+This specification is published for interoperability and implementation clarity. No express or implied patent license is granted by this document.
+
 ## 1. Introduction
 
 A Bitneedle picture record is a digital image in which the image itself is the data carrier. A conforming decoder traces defined spiral paths through the image and reconstructs an exact payload byte stream.
