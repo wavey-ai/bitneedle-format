@@ -8,6 +8,8 @@ This document specifies the Bitneedle Picture Record Format, an exact-digital im
 
 The current format uses a `576 x 576` PNG/RGBA carrier, record-profile-specific annular geometry, outer and inner metadata spirals, and a main groove-order payload spiral carrying `ECDC` bytes.
 
+This document also defines an optional steganographic sidecar container for non-playback extras such as liner notes, photos, credits, and booklet data. The sidecar is independent from the `ECDC` audio payload.
+
 ## Status of This Document
 
 This is a draft public specification for implementers and creators. It is not an Internet Standards Track document.
@@ -44,6 +46,12 @@ The current profile is exact-digital. Interoperable decoding assumes that requir
 
 `ECDC` means the payload byte container carried by the current Bitneedle payload spiral. The ECDC audio codec is outside this image-format specification.
 
+`steganographic sidecar` means an optional recoverable byte stream carried outside the main `ECDC` payload spiral, using visual carrier regions such as the label area and intra-groove area.
+
+`sidecar carrier` means a visual region used to carry steganographic sidecar bytes. The current carrier names are `label` and `intergroove`.
+
+`BTST` means the typed sidecar container format defined in Section 12.
+
 ## 3. Conformance
 
 A conforming encoder MUST produce a PNG/RGBA image that follows the raster, geometry, metadata, and payload mapping rules in this document.
@@ -51,6 +59,8 @@ A conforming encoder MUST produce a PNG/RGBA image that follows the raster, geom
 A conforming decoder MUST recover the metadata stream, reconstruct the payload spiral from the recovered parameters, and recover the declared number of payload bytes according to the payload encoding.
 
 A decoder MAY ignore optional creator metadata fields it does not understand. A decoder MUST ignore unknown metadata segment types after skipping their declared payload length.
+
+A decoder MAY ignore the optional steganographic sidecar. A decoder that supports the sidecar MUST treat it as non-playback auxiliary data and MUST NOT concatenate it with, substitute it for, or otherwise reinterpret it as the main `ECDC` payload.
 
 ## 4. Image Container
 
@@ -101,7 +111,7 @@ The canonical profile names are `single45` and `lp`. Implementations MAY accept 
 The format reserves:
 
 - two turns for the outer metadata spiral
-- two turns for the inner metadata spiral
+- four turns for the inner metadata spiral
 - one main payload spiral between the outer lead-in and inner label clearance
 
 The outer metadata spiral starts at:
@@ -223,9 +233,51 @@ The `payload encoding` segment MUST contain a canonical encoding name from Secti
 
 All UTF-8 text fields are dynamically sized by their segment payload length. Empty payloads represent absent or empty fields.
 
-Control characters MUST NOT appear in text fields. Encoders SHOULD keep creator metadata compact. Ordinary title and artist metadata is expected to produce a header of approximately `100` to `200` bytes, usually about `4%` to `8%` of current physical metadata capacity across the lead-in and dead-wax metadata bands.
+Control characters MUST NOT appear in text fields. Encoders SHOULD keep creator metadata compact. Ordinary title and artist metadata is expected to produce a header of approximately `100` to `200` bytes, usually about `3%` to `7%` of current physical metadata capacity across the lead-in and dead-wax metadata bands.
 
 The canonical URL segment is the preferred way to carry data for QR-code workflows. Implementations MAY render a QR code derived from this URL, but this specification does not define a QR bitmap or QR module-data segment. Encoders SHOULD store the URL, not a QR image, in the metadata header.
+
+### 9.6 Optional Signed Release Registry
+
+| Type | Name | Payload |
+| ---: | --- | --- |
+| `16` | signed release manifest | compact UTF-8 JSON |
+| `17` | signature algorithm | UTF-8 string, currently `ed25519` |
+| `18` | signature key ID | UTF-8 string |
+| `19` | signature | base64url-encoded Ed25519 signature bytes |
+| `20` | signed release manifest SHA-256 | base64url-encoded digest bytes |
+
+The signed release manifest is signed as the exact UTF-8 byte sequence carried in segment `16`. Verifiers MUST verify the signature over those exact bytes and MUST NOT parse and reserialize the JSON before verification.
+
+The signed release manifest SHOULD include `v`, `type`, `issuer`, `keyId`, `releaseId`, `canonicalUrl`, `title`, `artist`, `label`, `recordProfile`, `payloadContainer`, `ecdcByteLength`, `ecdcSha256`, and `createdAt`.
+
+Signed-release verification SHOULD recover the ECDC payload, compute its SHA-256 digest, verify segment `19` with the trusted public key identified by segment `18`, parse the signed manifest, and compare `ecdcSha256`, `ecdcByteLength`, and, when present, `recordProfile`, `releaseId`, and `canonicalUrl`.
+
+Verifiers MUST NOT trust a public key embedded inside the record image. The record MAY carry a key ID, but the corresponding public key MUST come from a trusted player bundle, trusted application configuration, or trusted HTTPS key endpoint.
+
+### 9.7 Optional Steganographic Sidecar Registry
+
+| Type | Name | Payload |
+| ---: | --- | --- |
+| `21` | steganographic sidecar descriptor | compact UTF-8 JSON |
+
+The sidecar descriptor declares how to recover an optional `BTST` sidecar stream from visual carrier regions that are not part of the main `ECDC` payload bytes.
+
+The descriptor JSON SHOULD use compact serialization and stable field names. It MUST contain:
+
+| Field | Type | Meaning |
+| --- | --- | --- |
+| `v` | integer | sidecar descriptor version, currently `1` |
+| `container` | string | sidecar container identifier, currently `BTST` |
+| `scheme` | string | carrier mapping scheme identifier |
+| `carriers` | array of strings | enabled physical carriers, currently `label`, `intergroove`, or both |
+| `seed` | integer | nonzero unsigned 32-bit pseudo-random ordering seed |
+| `length` | integer | exact `BTST` stream length in bytes |
+| `sha256` | string | base64url-encoded SHA-256 digest of the exact recovered `BTST` stream |
+
+The descriptor JSON MAY contain a `params` object for scheme-specific decode parameters. Unknown top-level descriptor fields MUST be ignored. Unknown `params` fields MUST be ignored by decoders that do not need them for the declared scheme.
+
+If segment `21` is absent, no public sidecar is declared. If segment `21` is present but unsupported, a decoder MUST still recover and validate the main `ECDC` payload normally.
 
 ## 10. Metadata Pixel Mapping
 
@@ -262,7 +314,121 @@ Encoders MUST write the exact ECDC byte length in metadata segment `2`.
 
 Decoders MUST use the declared ECDC byte length and payload encoding to recover the exact payload byte count and discard terminal padding.
 
-## 12. Decoding Procedure
+## 12. Optional Steganographic Sidecar Payload
+
+### 12.1 Relationship to the Main Payload
+
+The steganographic sidecar is optional auxiliary data. It is intended for release extras such as liner notes, photos, credits, booklet text, thumbnails, purchase metadata, or other non-playback material.
+
+The sidecar MUST NOT alter the definition of the main payload spiral. The main payload spiral continues to carry raw `ECDC` bytes as defined in Section 11.
+
+Sidecar encoders MUST NOT modify metadata pixels or main payload spiral pixels. Sidecar encoders SHOULD also avoid the lead-in and dead-wax metadata bands so those regions can remain visually clean.
+
+### 12.2 Sidecar Carrier Regions
+
+The public sidecar descriptor currently recognizes these carrier names:
+
+| Carrier | Meaning |
+| --- | --- |
+| `label` | pixels in the visual label area for the record profile |
+| `intergroove` | pixels in the payload annulus that are not sampled by the main payload spiral |
+
+A sidecar stream MAY be distributed across one or more carriers. When multiple carriers are enabled, the declared carrier mapping scheme defines one combined logical byte stream. The `BTST` stream itself is not split into separate per-carrier files.
+
+Carrier selection MUST be deterministic from the record profile, `b_value`, descriptor fields, and declared carrier scheme. Carrier selection MUST NOT depend on private encoder state that is unavailable to a decoder.
+
+### 12.3 Sidecar Carrier Scheme Registry
+
+The current public sidecar carrier scheme registry is:
+
+| Name | Meaning |
+| --- | --- |
+| `pairmod4-luma-v1` | exact-digital two-bit paired luminance residue mapping |
+
+For `pairmod4-luma-v1`, encoders construct the enabled carrier pixel set, sort it in scanline order, shuffle it with the descriptor `seed`, and group the shuffled pixels into consecutive pairs. Each pair carries one two-bit symbol.
+
+The decoded symbol for a pair is:
+
+```text
+Y       = floor((77 * R + 150 * G + 29 * B + 128) / 256)
+symbol  = (Y_first - Y_second) mod 4
+```
+
+The symbol values `0`, `1`, `2`, and `3` are concatenated most-significant first to recover bytes. Four pixel pairs recover one byte. Decoders MUST stop after recovering exactly the descriptor `length` bytes.
+
+Encoders MAY use any visual adjustment strategy that produces the required final modulo-4 luminance residues. Encoders SHOULD prefer small anti-symmetric luminance adjustments so the sidecar appears as natural record or label grain.
+
+### 12.4 `BTST` Container
+
+The recovered sidecar byte stream begins with this fixed binary prefix:
+
+| Offset | Size | Type | Meaning |
+| ---: | ---: | --- | --- |
+| `0` | `4` | bytes | ASCII magic `BTST` |
+| `4` | `1` | `u8` | container version, currently `1` |
+| `5` | `1` | `u8` | container flags, currently `0` |
+| `6` | `2` | `u16be` | item count |
+| `8` | `4` | `u32be` | total `BTST` stream length in bytes, including this prefix |
+
+The prefix is followed by `item count` item records. Each item record is:
+
+| Size | Type | Meaning |
+| ---: | --- | --- |
+| `1` | `u8` | item type |
+| `1` | `u8` | item codec |
+| `1` | `u8` | item flags, currently `0` |
+| `1` | `u8` | reserved, MUST be `0` |
+| `4` | `u32be` | raw byte length, or `u32::MAX` when not applicable |
+| `4` | `u32be` | stored byte length |
+| `2` | `u16be` | item name byte length |
+| `2` | `u16be` | MIME type byte length |
+| `N` | bytes | UTF-8 item name |
+| `M` | bytes | ASCII MIME type |
+| `K` | bytes | stored item data |
+
+Item names are advisory and MAY be empty. MIME types are advisory but SHOULD be present for images and documents.
+
+### 12.5 Sidecar Item Type Registry
+
+| Type | Name | Meaning |
+| ---: | --- | --- |
+| `0` | opaque bytes | uninterpreted byte stream |
+| `1` | UTF-8 text | human-readable text |
+| `2` | image | still image |
+| `3` | JSON | UTF-8 JSON document |
+| `4..31` | reserved | reserved by the Bitneedle specification |
+| `32..255` | private | private or experimental use |
+
+### 12.6 Sidecar Codec Registry
+
+| Codec | Name | Meaning |
+| ---: | --- | --- |
+| `0` | raw | stored bytes are the item bytes |
+| `1` | brotli | stored bytes are Brotli-compressed item bytes |
+| `2` | zstd | stored bytes are Zstandard-compressed item bytes |
+| `3` | avif | stored bytes are an AVIF image |
+| `4..31` | reserved | reserved by the Bitneedle specification |
+| `32..255` | private | private or experimental use |
+
+For `UTF-8 text` and `JSON` items, the recovered bytes after applying the item codec MUST be valid UTF-8. Encoders SHOULD use Brotli for natural-language liner notes and compact JSON unless a different codec is demonstrably smaller for the specific item.
+
+For `image` items in this version, interoperable encoders SHOULD use AVIF with MIME type `image/avif`.
+
+### 12.7 Sidecar Recovery
+
+A sidecar-capable decoder SHOULD:
+
+1. recover and verify the normal metadata stream
+2. recover and verify the main `ECDC` payload independently
+3. parse segment `21`, if present
+4. reconstruct the declared sidecar carrier pixel set
+5. recover exactly `length` bytes using the declared carrier scheme
+6. verify the recovered `BTST` stream SHA-256 against descriptor `sha256`
+7. parse the `BTST` container and expose supported items to the user
+
+Failure to recover or parse the sidecar MUST NOT by itself make an otherwise valid playable `ECDC` record invalid.
+
+## 13. Decoding Procedure
 
 Given a record image and either a known record profile or a successful profile inference, a decoder MUST:
 
@@ -278,9 +444,11 @@ Given a record image and either a known record profile or a successful profile i
 10. truncate the result to the declared ECDC byte length
 11. validate the recovered ECDC payload before playback or further processing
 
+If segment `21` is present and the decoder supports the declared sidecar scheme, the decoder MAY additionally recover the sidecar after completing main payload recovery.
+
 Decoders MUST NOT use black RGB pixels or presentation attributes as end-of-stream markers.
 
-## 13. Exact-Digital Recovery Requirements
+## 14. Exact-Digital Recovery Requirements
 
 Conforming exact-digital interchange requires:
 
@@ -291,36 +459,53 @@ Conforming exact-digital interchange requires:
 
 Arbitrary artwork MAY exist outside written spiral paths. Pictorial content outside payload and metadata spirals is allowed, but written spiral pixels MUST preserve encoded RGB values exactly.
 
-## 14. Extension Points
+Optional sidecar pixels also require exact RGB preservation for exact-digital recovery. Lossy recompression, color-management transforms, resampling, filtering, or compositing can destroy sidecar data even when the visible record remains recognizable.
 
-Future specifications MAY define additional raster sizes, record profiles, metadata segment types, profile auto-detection rules, payload encodings, payload containers, or photo-robust optical modes.
+## 15. Extension Points
+
+Future specifications MAY define additional raster sizes, record profiles, metadata segment types, profile auto-detection rules, payload encodings, payload containers, sidecar carrier schemes, sidecar item types, sidecar codecs, or photo-robust optical modes.
 
 New optional metadata segment types MUST be length-prefixed using the segment framing in this document. New fields that do not alter the meaning of existing core fields SHOULD NOT require a header schema-version bump.
 
 A future non-ECDC payload profile MUST define an explicit payload identifier or equivalent payload-container negotiation mechanism.
 
-## 15. Security Considerations
+New public sidecar item types and sidecar codecs MUST be assigned from the reserved ranges in Sections 12.5 and 12.6. Values `32..255` are reserved for private or experimental use and MUST NOT be assumed interoperable.
 
-Bitneedle images can carry compressed or encoded media payloads. Decoders MUST treat recovered payload bytes as untrusted input.
+## 16. Security Considerations
 
-Implementations SHOULD bound memory allocation using declared metadata and payload lengths, reject malformed segment streams, reject impossible dimensions or geometry, and validate recovered ECDC structure before attempting media decode.
+Bitneedle images can carry compressed or encoded media payloads. Decoders MUST treat recovered payload bytes and recovered sidecar item bytes as untrusted input.
+
+Implementations SHOULD bound memory allocation using declared metadata, payload, sidecar, and item lengths; reject malformed segment streams; reject malformed sidecar containers; reject impossible dimensions or geometry; and validate recovered ECDC structure before attempting media decode.
+
+Sidecar decoders that support Brotli, Zstandard, AVIF, or future codecs SHOULD apply normal decompression and image-decoder limits, including output-size limits and time limits.
 
 Implementations SHOULD avoid automatically dereferencing canonical URLs without user action. QR codes derived from canonical URLs SHOULD be treated as external links.
 
-## 16. Privacy Considerations
+## 17. Privacy Considerations
 
-Creator metadata can contain personal data, identifiers, timestamps, catalog numbers, URLs, and license information. Encoders SHOULD avoid embedding private or non-public data unless intentionally published by the creator.
+Creator metadata and sidecar items can contain personal data, identifiers, timestamps, catalog numbers, URLs, photos, liner notes, credits, and license information. Encoders SHOULD avoid embedding private or non-public data unless intentionally published by the creator.
 
-Players SHOULD make creator metadata inspectable when it affects navigation, linking, attribution, or collection behavior.
+Players SHOULD make creator metadata and supported sidecar items inspectable when they affect navigation, linking, attribution, collection behavior, or user-visible release extras.
 
-## 17. IANA Considerations
+## 18. IANA Considerations
 
 This document has no IANA actions.
 
-The segment-type registry and payload-encoding registry in this document are Bitneedle registries maintained by the Bitneedle Format specification repository.
+The segment-type registry, payload-encoding registry, sidecar carrier scheme registry, sidecar item type registry, and sidecar codec registry in this document are Bitneedle registries maintained by the Bitneedle Format specification repository.
 
-## 18. Conformance Vectors
+## 19. Conformance Vectors
 
-Normative conformance vectors are not yet published in this repository.
+The following Westside golden records are the current public complete-payload conformance vectors for this draft:
 
-Existing internal golden files are implementation regression fixtures and MAY be useful as non-normative examples. They SHOULD NOT be cited as authoritative current-format vectors until regenerated against this specification, including the current payload encoding segment and any creator metadata examples selected for publication.
+| Vector | Profile | PNG SHA-256 | Signed manifest SHA-256 | Signing key ID |
+| --- | --- | --- | --- | --- |
+| `lori-asha-westside-single45-hq.record.png` | `single45` | `c7d02ecb0152010e931fe45acb6471dbba9e85caed56b32e39a4d0b2587dc501` | `r1SfM-LMJCzaH4NWnAhHLdwI3CLgV9ffFg7pnkW5oPk` | `bn-prod-2026-05-18-01` |
+| `lori-asha-westside-lp-hq.record.png` | `lp` | `973fc10add9d652137c51f0937709c1f449cc88a6973316a9d105d650acf80fb` | `oUeBMmfgOi82l47E-ZAzyqfGinPr-XF67-P-12ftC50` | `bn-prod-2026-05-18-01` |
+
+The current public Ed25519 release verification key for these vectors is:
+
+| Key ID | Public key |
+| --- | --- |
+| `bn-prod-2026-05-18-01` | `cIrx9lAynSgsSBBaaNuOIoM4Xxz9RNc6bRgkIuwymiQ` |
+
+Only complete release-payload records are public conformance vectors. Preview-only progressive artifacts are internal regression fixtures and are not conformance vectors.
