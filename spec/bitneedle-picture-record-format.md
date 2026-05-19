@@ -50,7 +50,7 @@ The current profile is exact-digital. Interoperable decoding assumes that requir
 
 `sidecar carrier` means a visual region used to carry steganographic sidecar bytes. The current carrier names are `label` and `intergroove`.
 
-`BTST` means the typed sidecar container format defined in Section 12.
+`BTS1` means the Bitneedle Typed Sidecar v1 container format defined in Section 12.
 
 ## 3. Conformance
 
@@ -261,21 +261,25 @@ Verifiers MUST NOT trust a public key embedded inside the record image. The reco
 | ---: | --- | --- |
 | `21` | steganographic sidecar descriptor | compact UTF-8 JSON |
 
-The sidecar descriptor declares how to recover an optional `BTST` sidecar stream from visual carrier regions that are not part of the main `ECDC` payload bytes.
+The sidecar descriptor declares how to recover an optional `BTS1` sidecar stream from visual carrier regions that are not part of the main `ECDC` payload bytes.
 
 The descriptor JSON SHOULD use compact serialization and stable field names. It MUST contain:
 
 | Field | Type | Meaning |
 | --- | --- | --- |
 | `v` | integer | sidecar descriptor version, currently `1` |
-| `container` | string | sidecar container identifier, currently `BTST` |
+| `container` | string | sidecar container identifier, currently `BTS1` |
 | `scheme` | string | carrier mapping scheme identifier |
 | `carriers` | array of strings | enabled physical carriers, currently `label`, `intergroove`, or both |
 | `seed` | integer | nonzero unsigned 32-bit pseudo-random ordering seed |
-| `length` | integer | exact `BTST` stream length in bytes |
-| `sha256` | string | base64url-encoded SHA-256 digest of the exact recovered `BTST` stream |
+| `length` | integer | exact `BTS1` stream length in bytes |
+| `sha256` | string | base64url-encoded SHA-256 digest of the exact recovered `BTS1` stream |
+| `geometry` | object | record dimensions, center point, `bValue`, and carrier radii used for recovery |
+| `carrierOrdering` | object | pair construction and shuffle identifiers |
+| `bitPacking` | object | bits per pair, byte bit order, and pair-sign interpretation |
+| `luma` | object | luminance model and coefficients used by the declared scheme |
 
-The descriptor JSON MAY contain a `params` object for scheme-specific decode parameters. Unknown top-level descriptor fields MUST be ignored. Unknown `params` fields MUST be ignored by decoders that do not need them for the declared scheme.
+The descriptor JSON MAY contain additional scheme-specific fields such as `writer`. Unknown top-level descriptor fields MUST be ignored by decoders that do not need them for the declared scheme.
 
 If segment `21` is absent, no public sidecar is declared. If segment `21` is present but unsupported, a decoder MUST still recover and validate the main `ECDC` payload normally.
 
@@ -333,7 +337,7 @@ The public sidecar descriptor currently recognizes these carrier names:
 | `label` | pixels in the visual label area for the record profile |
 | `intergroove` | pixels in the payload annulus that are not sampled by the main payload spiral |
 
-A sidecar stream MAY be distributed across one or more carriers. When multiple carriers are enabled, the declared carrier mapping scheme defines one combined logical byte stream. The `BTST` stream itself is not split into separate per-carrier files.
+A sidecar stream MAY be distributed across one or more carriers. When multiple carriers are enabled, the declared carrier mapping scheme defines one combined logical byte stream. The `BTS1` stream itself is not split into separate per-carrier files.
 
 Carrier selection MUST be deterministic from the record profile, `b_value`, descriptor fields, and declared carrier scheme. Carrier selection MUST NOT depend on private encoder state that is unavailable to a decoder.
 
@@ -343,32 +347,51 @@ The current public sidecar carrier scheme registry is:
 
 | Name | Meaning |
 | --- | --- |
-| `pairmod4-luma-v1` | exact-digital two-bit paired luminance residue mapping |
+| `pairsign-safe-luma-v2` | exact-digital two-bit adjacent-pair luminance sign and magnitude mapping over deterministic safe pairs |
 
-For `pairmod4-luma-v1`, encoders construct the enabled carrier pixel set, sort it in scanline order, shuffle it with the descriptor `seed`, and group the shuffled pixels into consecutive pairs. Each pair carries one two-bit symbol.
+For `pairsign-safe-luma-v2`, encoders construct adjacent horizontal pixel pairs from the selected carrier areas, sort them by deterministic safe-luma score with a seeded tie-break, and write up to two bits per pair. The first bit is encoded by pair luminance sign. The second bit is encoded by pair luminance-difference magnitude for pairs meeting the scheme threshold.
 
-The decoded symbol for a pair is:
+Carrier pair construction is:
 
 ```text
-Y       = floor((77 * R + 150 * G + 29 * B + 128) / 256)
-symbol  = (Y_first - Y_second) mod 4
+for y in 0..height:
+  x = 0
+  while x + 1 < width:
+    first  = (x, y)
+    second = (x + 1, y)
+    if first and second are both inside an enabled carrier:
+      append (first, second)
+      x += 2
+    else:
+      x += 1
 ```
 
-The symbol values `0`, `1`, `2`, and `3` are concatenated most-significant first to recover bytes. Four pixel pairs recover one byte. Decoders MUST stop after recovering exactly the descriptor `length` bytes.
+Pixel centers are evaluated at `(x + 0.5, y + 0.5)`. A `label` pixel is inside the label carrier when its distance from the descriptor center is greater than `geometry.label.innerRadius` and less than `geometry.label.outerRadius`. An `intergroove` pixel is inside the intergroove carrier when its distance is greater than `geometry.intergroove.innerRadius`, less than `geometry.intergroove.outerRadius`, and the pixel is not sampled by the main payload spiral.
 
-Encoders MAY use any visual adjustment strategy that produces the required final modulo-4 luminance residues. Encoders SHOULD prefer small anti-symmetric luminance adjustments so the sidecar appears as natural record or label grain.
+The pair list is shuffled using Fisher-Yates with Mulberry32 seeded by descriptor `seed`.
 
-### 12.4 `BTST` Container
+The decoded bit for a pair is:
+
+```text
+Y   = 0.2126 * R + 0.7152 * G + 0.0722 * B
+bit = 1 if Y_first > Y_second, otherwise 0
+```
+
+Bits are concatenated most-significant first to recover bytes. Eight pixel pairs recover one byte. Decoders MUST stop after recovering exactly the descriptor `length` bytes.
+
+Encoders MAY use any visual adjustment strategy that produces the required final pair signs. Encoders SHOULD prefer small anti-symmetric luminance adjustments around each pair's local average so the sidecar appears as natural record or label grain.
+
+### 12.4 `BTS1` Container
 
 The recovered sidecar byte stream begins with this fixed binary prefix:
 
 | Offset | Size | Type | Meaning |
 | ---: | ---: | --- | --- |
-| `0` | `4` | bytes | ASCII magic `BTST` |
+| `0` | `4` | bytes | ASCII magic `BTS1` |
 | `4` | `1` | `u8` | container version, currently `1` |
 | `5` | `1` | `u8` | container flags, currently `0` |
 | `6` | `2` | `u16be` | item count |
-| `8` | `4` | `u32be` | total `BTST` stream length in bytes, including this prefix |
+| `8` | `4` | `u32be` | total `BTS1` stream length in bytes, including this prefix |
 
 The prefix is followed by `item count` item records. Each item record is:
 
@@ -423,8 +446,8 @@ A sidecar-capable decoder SHOULD:
 3. parse segment `21`, if present
 4. reconstruct the declared sidecar carrier pixel set
 5. recover exactly `length` bytes using the declared carrier scheme
-6. verify the recovered `BTST` stream SHA-256 against descriptor `sha256`
-7. parse the `BTST` container and expose supported items to the user
+6. verify the recovered `BTS1` stream SHA-256 against descriptor `sha256`
+7. parse the `BTS1` container and expose supported items to the user
 
 Failure to recover or parse the sidecar MUST NOT by itself make an otherwise valid playable `ECDC` record invalid.
 
